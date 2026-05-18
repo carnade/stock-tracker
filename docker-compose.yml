@@ -1,0 +1,36 @@
+name: stock-tracker
+
+services:
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - stock_data:/app/data
+    environment:
+      DATABASE_URL: sqlite:////app/data/stocks.db
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      BACKEND_URL: http://backend:8000
+    depends_on:
+      - backend
+
+volumes:
+  stock_data:
+    # For NAS deployment: change to a bind mount pointing to a NAS directory so
+    # the database file lives on the NAS filesystem and survives container rebuilds.
+    #
+    # driver: local
+    # driver_opts:
+    #   type: none
+    #   o: bind
+    #   device: /share/Container/stock-tracker-data   # adjust to your NAS path
+    #
+    # Then create the directory on the NAS before first run:
+    #   mkdir -p /share/Container/stock-tracker-data

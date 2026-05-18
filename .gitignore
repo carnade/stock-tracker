@@ -1,0 +1,20 @@
+# Claude Code
+.claude/
+
+# NAS-specific setup guide (contains local paths)
+NAS_SETUP.md
+
+# Local dev environment
+frontend/.env.local
+backend/stocks.db
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Node
+node_modules/
+frontend/.next/
