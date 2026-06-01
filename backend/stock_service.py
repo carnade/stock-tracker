@@ -33,6 +33,7 @@ class AvanzaInfo:
 @dataclass
 class PriceData:
     current: float
+    prev_close: float | None
     week_ago: float | None
     month_ago: float | None
     ytd_start: float | None
@@ -50,6 +51,14 @@ class PriceData:
     bb_lower: float | None
     bb_pct: float | None
     atr14: float | None
+    stoch_k: float | None
+    stoch_d: float | None
+    adx14: float | None
+    adx_plus_di: float | None
+    adx_minus_di: float | None
+    obv_slope: float | None
+    ema9: float | None
+    ema21: float | None
 
 
 def lookup_ticker(ticker: str) -> StockPreview:
@@ -121,6 +130,59 @@ def _compute_atr(hist: pd.DataFrame, period: int = 14) -> float | None:
     return round(float(tr.tail(period).mean()), 2)
 
 
+def _compute_stochastic(hist: pd.DataFrame, k_period: int = 14, d_period: int = 3) -> tuple:
+    if len(hist) < k_period + d_period:
+        return None, None
+    low_min  = hist["Low"].rolling(k_period).min()
+    high_max = hist["High"].rolling(k_period).max()
+    band = high_max - low_min
+    k = 100 * (hist["Close"] - low_min) / band.where(band != 0)
+    d = k.rolling(d_period).mean()
+    k_val, d_val = k.iloc[-1], d.iloc[-1]
+    if pd.isna(k_val) or pd.isna(d_val):
+        return None, None
+    return round(float(k_val), 1), round(float(d_val), 1)
+
+
+def _compute_adx(hist: pd.DataFrame, period: int = 14) -> tuple:
+    if len(hist) < period * 2:
+        return None, None, None
+    up   = hist["High"].diff()
+    down = -hist["Low"].diff()
+    plus_dm  = up.where((up > down) & (up > 0), 0.0)
+    minus_dm = down.where((down > up) & (down > 0), 0.0)
+    prev_close = hist["Close"].shift(1)
+    tr = pd.concat([
+        hist["High"] - hist["Low"],
+        (hist["High"] - prev_close).abs(),
+        (hist["Low"]  - prev_close).abs(),
+    ], axis=1).max(axis=1)
+    atr_s    = tr.ewm(alpha=1 / period, adjust=False).mean()
+    plus_di  = 100 * plus_dm.ewm(alpha=1 / period, adjust=False).mean() / atr_s
+    minus_di = 100 * minus_dm.ewm(alpha=1 / period, adjust=False).mean() / atr_s
+    di_sum   = (plus_di + minus_di).replace(0, float("nan"))
+    dx       = 100 * (plus_di - minus_di).abs() / di_sum
+    adx      = dx.ewm(alpha=1 / period, adjust=False).mean()
+    adx_val, pdi_val, mdi_val = adx.iloc[-1], plus_di.iloc[-1], minus_di.iloc[-1]
+    if any(pd.isna(v) for v in [adx_val, pdi_val, mdi_val]):
+        return None, None, None
+    return round(float(adx_val), 1), round(float(pdi_val), 1), round(float(mdi_val), 1)
+
+
+def _compute_obv_slope(hist: pd.DataFrame) -> float | None:
+    """OBV 10-bar slope normalised to recent average OBV magnitude (positive = accumulation)."""
+    if len(hist) < 20 or "Volume" not in hist.columns:
+        return None
+    direction = hist["Close"].diff().apply(lambda x: 1 if x > 0 else (-1 if x < 0 else 0))
+    obv  = (direction * hist["Volume"]).cumsum()
+    recent = float(obv.iloc[-1])
+    past   = float(obv.iloc[-10])
+    avg    = float(obv.abs().tail(20).mean())
+    if avg == 0:
+        return None
+    return round((recent - past) / avg * 100, 1)
+
+
 def _price_on_or_before(hist: pd.DataFrame, target: date) -> float | None:
     try:
         target_ts = pd.Timestamp(target.isoformat())
@@ -139,10 +201,12 @@ def get_all_price_histories(tickers: list[str]) -> dict[str, PriceData]:
 
     now = time.monotonic()
     today = date.today()
-    empty = PriceData(current=0.0, week_ago=None, month_ago=None, ytd_start=None,
+    empty = PriceData(current=0.0, prev_close=None, week_ago=None, month_ago=None, ytd_start=None,
                       week52_high=None, week52_low=None, rsi14=None, volume=None, avg_volume_10d=None,
                       macd_line=None, macd_signal=None, macd_hist=None, ma50=None, ma200=None,
-                      bb_upper=None, bb_lower=None, bb_pct=None, atr14=None)
+                      bb_upper=None, bb_lower=None, bb_pct=None, atr14=None,
+                      stoch_k=None, stoch_d=None, adx14=None, adx_plus_di=None, adx_minus_di=None,
+                      obv_slope=None, ema9=None, ema21=None)
 
     # Serve from cache where possible
     cached: dict[str, PriceData] = {}
@@ -219,8 +283,36 @@ def get_all_price_histories(tickers: list[str]) -> dict[str, PriceData]:
             ma50 = round(float(hist["Close"].tail(50).mean()), 2) if len(hist) >= 50 else None
             ma200 = round(float(hist["Close"].tail(200).mean()), 2) if len(hist) >= 200 else None
 
+            prev_close = float(hist["Close"].iloc[-2]) if len(hist) >= 2 else None
+
+            try:
+                stoch_k, stoch_d = _compute_stochastic(hist)
+            except Exception as e:
+                logger.warning(f"Stochastic error for {ticker}: {e}")
+                stoch_k = stoch_d = None
+
+            try:
+                adx14, adx_plus_di, adx_minus_di = _compute_adx(hist)
+            except Exception as e:
+                logger.warning(f"ADX error for {ticker}: {e}")
+                adx14 = adx_plus_di = adx_minus_di = None
+
+            try:
+                obv_slope = _compute_obv_slope(hist)
+            except Exception as e:
+                logger.warning(f"OBV error for {ticker}: {e}")
+                obv_slope = None
+
+            try:
+                ema9  = round(float(hist["Close"].ewm(span=9,  adjust=False).mean().iloc[-1]), 2) if len(hist) >= 9  else None
+                ema21 = round(float(hist["Close"].ewm(span=21, adjust=False).mean().iloc[-1]), 2) if len(hist) >= 21 else None
+            except Exception as e:
+                logger.warning(f"EMA error for {ticker}: {e}")
+                ema9 = ema21 = None
+
             data = PriceData(
                 current=current,
+                prev_close=prev_close,
                 week_ago=_price_on_or_before(hist, today - timedelta(days=7)),
                 month_ago=_price_on_or_before(hist, today - timedelta(days=30)),
                 ytd_start=_price_on_or_before(hist, date(today.year, 1, 1)),
@@ -238,6 +330,14 @@ def get_all_price_histories(tickers: list[str]) -> dict[str, PriceData]:
                 bb_lower=bb_lower,
                 bb_pct=bb_pct,
                 atr14=atr14,
+                stoch_k=stoch_k,
+                stoch_d=stoch_d,
+                adx14=adx14,
+                adx_plus_di=adx_plus_di,
+                adx_minus_di=adx_minus_di,
+                obv_slope=obv_slope,
+                ema9=ema9,
+                ema21=ema21,
             )
             fetched[ticker] = data
             _price_cache[ticker] = (now, data)

@@ -6,7 +6,7 @@ import { Stock, Group, deleteStock } from "@/lib/api";
 import StockLinks from "./StockLinks";
 import EditStockModal from "./EditStockModal";
 
-type SortKey = "name" | "added_date" | "since_added" | "week" | "month" | "ytd";
+type SortKey = "name" | "added_date" | "since_added" | "day" | "week" | "month" | "ytd";
 type SortDir = "asc" | "desc";
 
 // ── small helpers ────────────────────────────────────────────────────
@@ -230,6 +230,101 @@ function AtrSection({ stock }: { stock: Stock }) {
   );
 }
 
+function EmaSection({ stock }: { stock: Stock }) {
+  const { ema9, ema21, currency } = stock;
+  if (ema9 == null || ema21 == null) return null;
+  const pctDiff = ema21 !== 0 ? ((ema9 - ema21) / ema21) * 100 : 0;
+  const bullish = ema9 > ema21;
+  return (
+    <div>
+      <PanelLabel>EMA 9 / 21</PanelLabel>
+      <SentimentLabel s={bullish
+        ? { label: pctDiff > 1 ? "Short-term uptrend" : "Mild bullish bias", color: "text-green" }
+        : { label: pctDiff < -1 ? "Short-term downtrend" : "Mild bearish bias", color: "text-red" }
+      } />
+      <PanelRow label="EMA 9">{fmt(ema9, currency)}</PanelRow>
+      <PanelRow label="EMA 21">{fmt(ema21, currency)}</PanelRow>
+      <PanelRow label="Spread">
+        <span className={bullish ? "text-green" : "text-red"}>
+          {pctDiff >= 0 ? "+" : ""}{pctDiff.toFixed(2)}%
+        </span>
+      </PanelRow>
+    </div>
+  );
+}
+
+function StochSection({ stock }: { stock: Stock }) {
+  const { stoch_k, stoch_d } = stock;
+  if (stoch_k == null || stoch_d == null) return null;
+  const oversold = stoch_k < 20;
+  const overbought = stoch_k > 80;
+  const zone = oversold ? "Oversold" : overbought ? "Overbought" : "Neutral";
+  const zoneColor = oversold ? "text-green" : overbought ? "text-red" : "text-muted";
+  const crossBull = oversold && stoch_k > stoch_d;
+  const crossBear = overbought && stoch_k < stoch_d;
+  const sentiment = crossBull
+    ? { label: "Bullish cross from oversold", color: "text-green" }
+    : crossBear
+    ? { label: "Bearish cross from overbought", color: "text-red" }
+    : oversold
+    ? { label: "Oversold — watch for cross", color: "text-green/80" }
+    : overbought
+    ? { label: "Overbought — watch for cross", color: "text-accent" }
+    : null;
+  return (
+    <div>
+      <PanelLabel>Stochastic (14,3)</PanelLabel>
+      <SentimentLabel s={sentiment} />
+      <PanelRow label="%K">
+        <span className={zoneColor}>{stoch_k.toFixed(1)}</span>
+      </PanelRow>
+      <PanelRow label="%D">
+        <span className="text-[#c8c4bc]">{stoch_d.toFixed(1)}</span>
+      </PanelRow>
+      <PanelRow label="Zone">
+        <span className={zoneColor}>{zone}</span>
+      </PanelRow>
+    </div>
+  );
+}
+
+function AdxSection({ stock }: { stock: Stock }) {
+  const { adx14, adx_plus_di, adx_minus_di, obv_slope } = stock;
+  if (adx14 == null || adx_plus_di == null || adx_minus_di == null) return null;
+  const strong = adx14 > 25;
+  const ranging = adx14 < 20;
+  const bullDir = adx_plus_di > adx_minus_di;
+  const strengthLabel = strong ? "Trending" : ranging ? "Ranging" : "Moderate";
+  const strengthColor = strong ? "text-green" : ranging ? "text-accent" : "text-muted";
+  const sentiment = strong
+    ? { label: bullDir ? "Strong bullish trend" : "Strong bearish trend", color: bullDir ? "text-green" : "text-red" }
+    : ranging
+    ? { label: "No clear trend — MA signals unreliable", color: "text-accent" }
+    : null;
+  const obvColor = obv_slope == null ? "text-muted" : obv_slope > 50 ? "text-green" : obv_slope < -50 ? "text-red" : obv_slope > 10 ? "text-green/60" : obv_slope < -10 ? "text-accent" : "text-muted";
+  const obvLabel = obv_slope == null ? "—" : obv_slope > 50 ? "Accumulation" : obv_slope < -50 ? "Distribution" : obv_slope > 10 ? "Rising" : obv_slope < -10 ? "Falling" : "Flat";
+  return (
+    <div>
+      <PanelLabel>ADX / OBV</PanelLabel>
+      <SentimentLabel s={sentiment} />
+      <PanelRow label="ADX">
+        <span className={strengthColor}>{adx14.toFixed(1)} — {strengthLabel}</span>
+      </PanelRow>
+      <PanelRow label="+DI">
+        <span className="text-green">{adx_plus_di.toFixed(1)}</span>
+      </PanelRow>
+      <PanelRow label="-DI">
+        <span className="text-red">{adx_minus_di.toFixed(1)}</span>
+      </PanelRow>
+      {obv_slope != null && (
+        <PanelRow label="OBV">
+          <span className={obvColor}>{obvLabel} ({obv_slope > 0 ? "+" : ""}{obv_slope.toFixed(0)}%)</span>
+        </PanelRow>
+      )}
+    </div>
+  );
+}
+
 function TechnicalPanel({ stock, onEdit }: { stock: Stock; onEdit: () => void }) {
   return (
     <div className="bg-surface border-b border-border/60">
@@ -238,6 +333,9 @@ function TechnicalPanel({ stock, onEdit }: { stock: Stock; onEdit: () => void })
         <MaSection stock={stock} />
         <BollingerSection stock={stock} />
         <AtrSection stock={stock} />
+        <EmaSection stock={stock} />
+        <StochSection stock={stock} />
+        <AdxSection stock={stock} />
       </div>
       {/* Notes + edit */}
       <div className="flex items-start justify-between gap-6 px-8 pb-5 border-t border-border/40 pt-4">
@@ -334,6 +432,8 @@ export default function StockTable({
           va = a.added_price ? (a.current_price - a.added_price) / a.added_price : -Infinity;
           vb = b.added_price ? (b.current_price - b.added_price) / b.added_price : -Infinity;
           break;
+        case "day":
+          va = a.day_change_pct ?? -Infinity; vb = b.day_change_pct ?? -Infinity; break;
         case "week":
           va = a.week_change_pct ?? -Infinity; vb = b.week_change_pct ?? -Infinity; break;
         case "month":
@@ -398,6 +498,9 @@ export default function StockTable({
                 onClick={() => toggleSort("since_added")}
               >
                 Since<br />Added <SortIcon active={sortKey === "since_added"} dir={sortDir} />
+              </th>
+              <th className={TH_SORT_R} onClick={() => toggleSort("day")}>
+                1D <SortIcon active={sortKey === "day"} dir={sortDir} />
               </th>
               <th className={TH_SORT_R} onClick={() => toggleSort("week")}>
                 1W <SortIcon active={sortKey === "week"} dir={sortDir} />
@@ -482,6 +585,9 @@ export default function StockTable({
                         <SinceAdded current={stock.current_price} added={stock.added_price} />
                       </td>
                       <td className={`${TD} text-right`}>
+                        <Delta value={stock.day_change_pct} />
+                      </td>
+                      <td className={`${TD} text-right`}>
                         <Delta value={stock.week_change_pct} />
                       </td>
                       <td className={`${TD} text-right`}>
@@ -551,7 +657,7 @@ export default function StockTable({
                     <AnimatePresence>
                       {isExpanded && (
                         <tr key={`${stock.id}-detail`}>
-                          <td colSpan={16} className="p-0">
+                          <td colSpan={17} className="p-0">
                             <motion.div
                               initial={{ height: 0, opacity: 0 }}
                               animate={{ height: "auto", opacity: 1 }}

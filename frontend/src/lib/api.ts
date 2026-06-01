@@ -18,6 +18,7 @@ export interface Stock {
   source_notes: string;
   group_id: number | null;
   current_price: number;
+  day_change_pct: number | null;
   week_change_pct: number | null;
   month_change_pct: number | null;
   ytd_change_pct: number | null;
@@ -35,6 +36,14 @@ export interface Stock {
   bb_lower: number | null;
   bb_pct: number | null;
   atr14: number | null;
+  stoch_k: number | null;
+  stoch_d: number | null;
+  adx14: number | null;
+  adx_plus_di: number | null;
+  adx_minus_di: number | null;
+  obv_slope: number | null;
+  ema9: number | null;
+  ema21: number | null;
   yahoo_url: string;
   tradingview_url: string;
   avanza_url: string | null;
@@ -67,6 +76,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const fetchStocks = () => request<Stock[]>("/stocks");
+
+export const analyzeStocks = (tickers: string) =>
+  request<Stock[]>(`/stocks/analyze?tickers=${encodeURIComponent(tickers)}`);
 
 export const previewStock = (ticker: string) =>
   request<StockPreview>(`/stocks/preview?ticker=${encodeURIComponent(ticker)}`);

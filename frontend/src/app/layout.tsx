@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, Syne } from "next/font/google";
 import "./globals.css";
+import NavBar from "@/components/NavBar";
 
 const ibmMono = IBM_Plex_Mono({
   subsets: ["latin"],
@@ -26,7 +27,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${ibmMono.variable} ${syne.variable} h-full`}>
-      <body className="min-h-full antialiased font-mono">{children}</body>
+      <body className="min-h-full antialiased font-mono">
+        <NavBar />
+        {children}
+      </body>
     </html>
   );
 }

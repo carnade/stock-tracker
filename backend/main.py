@@ -99,6 +99,7 @@ def list_stocks(session: Session = Depends(get_session)):
             {
                 **stock.model_dump(),
                 "current_price": current,
+                "day_change_pct": pct_change(current, p.prev_close) if p else None,
                 "week_change_pct": pct_change(current, p.week_ago) if p else None,
                 "month_change_pct": pct_change(current, p.month_ago) if p else None,
                 "ytd_change_pct": pct_change(current, p.ytd_start) if p else None,
@@ -116,6 +117,14 @@ def list_stocks(session: Session = Depends(get_session)):
                 "bb_lower": p.bb_lower if p else None,
                 "bb_pct": p.bb_pct if p else None,
                 "atr14": p.atr14 if p else None,
+                "stoch_k": round(p.stoch_k, 1) if p and p.stoch_k is not None else None,
+                "stoch_d": round(p.stoch_d, 1) if p and p.stoch_d is not None else None,
+                "adx14": round(p.adx14, 1) if p and p.adx14 is not None else None,
+                "adx_plus_di": round(p.adx_plus_di, 1) if p and p.adx_plus_di is not None else None,
+                "adx_minus_di": round(p.adx_minus_di, 1) if p and p.adx_minus_di is not None else None,
+                "obv_slope": p.obv_slope if p else None,
+                "ema9": p.ema9 if p else None,
+                "ema21": p.ema21 if p else None,
                 **links,
             }
         )
@@ -143,6 +152,65 @@ async def preview_stock(ticker: str):
         "avanza_id": avanza.id if avanza else None,
         **links,
     }
+
+
+@app.get("/stocks/analyze")
+def analyze_tickers(tickers: str):
+    """Return full swing-analysis data for arbitrary tickers without persisting them."""
+    ticker_list = [t.strip().upper() for t in tickers.split(",") if t.strip()][:20]
+    if not ticker_list:
+        raise HTTPException(status_code=400, detail="No tickers provided")
+
+    prices = get_all_price_histories(ticker_list)
+    result = []
+    for i, ticker in enumerate(ticker_list):
+        p = prices.get(ticker)
+        if not p or p.current == 0.0:
+            continue
+        current = p.current
+        links = build_links(ticker, None, None)
+        result.append({
+            "id": -(i + 1),
+            "ticker": ticker,
+            "name": ticker,
+            "industry": "",
+            "sector": "",
+            "added_date": str(date.today()),
+            "added_price": current,
+            "currency": "USD",
+            "avanza_id": None,
+            "source_notes": "",
+            "group_id": None,
+            "current_price": current,
+            "day_change_pct": pct_change(current, p.prev_close),
+            "week_change_pct": pct_change(current, p.week_ago),
+            "month_change_pct": pct_change(current, p.month_ago),
+            "ytd_change_pct": pct_change(current, p.ytd_start),
+            "week52_high": round(p.week52_high, 2) if p.week52_high else None,
+            "week52_low": round(p.week52_low, 2) if p.week52_low else None,
+            "rsi14": round(p.rsi14, 1) if p.rsi14 is not None else None,
+            "volume": p.volume,
+            "avg_volume_10d": round(p.avg_volume_10d) if p.avg_volume_10d else None,
+            "macd_line": p.macd_line,
+            "macd_signal": p.macd_signal,
+            "macd_hist": p.macd_hist,
+            "ma50": p.ma50,
+            "ma200": p.ma200,
+            "bb_upper": p.bb_upper,
+            "bb_lower": p.bb_lower,
+            "bb_pct": p.bb_pct,
+            "atr14": p.atr14,
+            "stoch_k": round(p.stoch_k, 1) if p.stoch_k is not None else None,
+            "stoch_d": round(p.stoch_d, 1) if p.stoch_d is not None else None,
+            "adx14": round(p.adx14, 1) if p.adx14 is not None else None,
+            "adx_plus_di": round(p.adx_plus_di, 1) if p.adx_plus_di is not None else None,
+            "adx_minus_di": round(p.adx_minus_di, 1) if p.adx_minus_di is not None else None,
+            "obv_slope": p.obv_slope,
+            "ema9": p.ema9,
+            "ema21": p.ema21,
+            **links,
+        })
+    return result
 
 
 @app.post("/stocks", status_code=201)
