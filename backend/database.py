@@ -18,6 +18,11 @@ def create_db() -> None:
                     "ALTER TABLE stock ADD COLUMN group_id INTEGER REFERENCES stockgroup(id)"
                 ))
                 conn.commit()
+            if "owned" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE stock ADD COLUMN owned INTEGER NOT NULL DEFAULT 0"
+                ))
+                conn.commit()
 
 
 def get_session():

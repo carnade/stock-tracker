@@ -48,6 +48,7 @@ class GroupRequest(BaseModel):
 class UpdateStockRequest(BaseModel):
     group_id: int | None = None
     source_notes: str = ""
+    owned: bool = False
 
 
 # ── groups ────────────────────────────────────────────────────────────
@@ -253,6 +254,7 @@ def update_stock(stock_id: int, req: UpdateStockRequest, session: Session = Depe
         raise HTTPException(status_code=404, detail="Stock not found")
     stock.group_id = req.group_id
     stock.source_notes = req.source_notes
+    stock.owned = req.owned
     session.add(stock)
     session.commit()
     session.refresh(stock)

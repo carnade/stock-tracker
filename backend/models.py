@@ -19,4 +19,5 @@ class Stock(SQLModel, table=True):
     avanza_id: int | None = None
     avanza_slug: str | None = None
     source_notes: str = ""
+    owned: bool = Field(default=False)
     group_id: int | None = Field(default=None, foreign_key="stockgroup.id")

@@ -16,6 +16,7 @@ export interface Stock {
   currency: string;
   avanza_id: number | null;
   source_notes: string;
+  owned: boolean;
   group_id: number | null;
   current_price: number;
   day_change_pct: number | null;
@@ -92,7 +93,7 @@ export const addStock = (ticker: string, source_notes: string, group_id?: number
 export const deleteStock = (id: number) =>
   request<void>(`/stocks/${id}`, { method: "DELETE" });
 
-export const updateStock = (id: number, data: { group_id: number | null; source_notes: string }) =>
+export const updateStock = (id: number, data: { group_id: number | null; source_notes: string; owned: boolean }) =>
   request<Stock>(`/stocks/${id}`, {
     method: "PATCH",
     body: JSON.stringify(data),

@@ -2,7 +2,7 @@
 
 import { useState, useMemo, Fragment } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Stock, Group, deleteStock } from "@/lib/api";
+import { Stock, Group, deleteStock, updateStock } from "@/lib/api";
 import StockLinks from "./StockLinks";
 import EditStockModal from "./EditStockModal";
 
@@ -396,6 +396,20 @@ export default function StockTable({
     onDeleted();
   };
 
+  const handleToggleOwned = async (stock: Stock) => {
+    const nowOwned = !stock.owned;
+    const today = new Date().toISOString().slice(0, 10);
+    const priceStr = stock.current_price.toFixed(2);
+    const entry = nowOwned
+      ? `Bought: ${today} @ ${priceStr}`
+      : `Sold: ${today} @ ${priceStr}`;
+    const notes = stock.source_notes
+      ? `${stock.source_notes}\n${entry}`
+      : entry;
+    await updateStock(stock.id, { group_id: stock.group_id, source_notes: notes, owned: nowOwned });
+    onEdited();
+  };
+
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -484,6 +498,7 @@ export default function StockTable({
             <tr className="border-b border-border">
               <th className="py-3 w-6 pr-1" />
               <th className={TH}>Ticker</th>
+              <th className="py-3 pr-3 w-6" title="Owned" />
               <th className={TH_SORT} onClick={() => toggleSort("name")}>
                 Name <SortIcon active={sortKey === "name"} dir={sortDir} />
               </th>
@@ -552,6 +567,17 @@ export default function StockTable({
                         <span className="text-ticker font-semibold tracking-wider">
                           {stock.ticker}
                         </span>
+                      </td>
+                      <td className="py-4 pr-3 w-6">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleToggleOwned(stock); }}
+                          title={stock.owned ? "Owned — click to unmark" : "Not owned — click to mark as owned"}
+                          className="text-[13px] leading-none transition-colors hover:scale-110"
+                        >
+                          {stock.owned
+                            ? <span className="text-green">●</span>
+                            : <span className="text-muted/30 hover:text-muted/60">○</span>}
+                        </button>
                       </td>
                       <td className={`${TD} max-w-[180px]`}>
                         <span className="truncate block text-[#b8b3ab]" title={stock.name}>
@@ -657,7 +683,7 @@ export default function StockTable({
                     <AnimatePresence>
                       {isExpanded && (
                         <tr key={`${stock.id}-detail`}>
-                          <td colSpan={17} className="p-0">
+                          <td colSpan={18} className="p-0">
                             <motion.div
                               initial={{ height: 0, opacity: 0 }}
                               animate={{ height: "auto", opacity: 1 }}

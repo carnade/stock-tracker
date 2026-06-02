@@ -66,6 +66,11 @@ function SignalRow({ stock, signal, index }: { stock: Stock; signal: SignalResul
         <td className={TD}>
           <span className="text-ticker font-semibold tracking-wider">{stock.ticker}</span>
         </td>
+        <td className="py-4 pr-2 w-4">
+          <span className={`text-[11px] leading-none ${stock.owned ? "text-green" : "text-muted/20"}`} title={stock.owned ? "Owned" : "Not owned"}>
+            {stock.owned ? "●" : "○"}
+          </span>
+        </td>
         <td className={`${TD} max-w-[180px]`}>
           <span className="truncate block text-[#b8b3ab]" title={stock.name}>
             {stock.name !== stock.ticker ? stock.name : ""}
@@ -102,7 +107,7 @@ function SignalRow({ stock, signal, index }: { stock: Stock; signal: SignalResul
       <AnimatePresence>
         {expanded && (
           <tr key={`${stock.id}-${signal.type}-detail`}>
-            <td colSpan={9} className="p-0">
+            <td colSpan={10} className="p-0">
               <motion.div
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: "auto", opacity: 1 }}
@@ -180,6 +185,7 @@ function SignalBucket({
                   <tr className="border-b border-border/40">
                     <th className="py-3 w-6 pr-1" />
                     <th className={TH}>Ticker</th>
+                    <th className="py-3 pr-2 w-4" />
                     <th className={TH}>Name</th>
                     <th className={`${TH} text-right`}>Price</th>
                     <th className={TH}>Confidence</th>

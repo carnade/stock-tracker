@@ -21,7 +21,7 @@ export default function EditStockModal({ stock, groups, onClose, onSaved }: Prop
     setSaving(true);
     setError(null);
     try {
-      await updateStock(stock.id, { group_id: groupId, source_notes: notes });
+      await updateStock(stock.id, { group_id: groupId, source_notes: notes, owned: stock.owned });
       onSaved();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to save");
