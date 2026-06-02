@@ -280,3 +280,166 @@ export function scoreStock(stock: Stock): SwingSignal {
     dataCompleteness: factors.length / TOTAL_FACTORS,
   };
 }
+
+// ── Focused scorers ───────────────────────────────────────────────────
+
+export interface FocusedScore {
+  rating: Rating;
+  totalScore: number;
+  factors: SignalFactor[];
+  dataCompleteness: number;
+}
+
+function ratingFromFocusedScore(score: number): Rating {
+  if (score >= 4)  return "Strong Buy";
+  if (score >= 1)  return "Buy";
+  if (score >= -1) return "Neutral";
+  if (score >= -4) return "Sell";
+  return "Strong Sell";
+}
+
+export function scoreTrend(stock: Stock): FocusedScore {
+  const factors: SignalFactor[] = [];
+  const TOTAL = 3;
+
+  // MA Trend (±2) — same logic as scoreStock
+  if (stock.ma50 != null && stock.ma200 != null) {
+    const cur = stock.current_price;
+    const aboveMa50  = cur > stock.ma50;
+    const aboveMa200 = cur > stock.ma200;
+    const goldenCross = stock.ma50 > stock.ma200;
+    let score: number; let description: string; let direction: SignalFactor["direction"];
+    if (aboveMa50 && goldenCross) {
+      score = 2; direction = "bullish";
+      description = `Price above MA50 (${stock.ma50.toFixed(2)}) and MA200 (${stock.ma200.toFixed(2)}), golden cross active`;
+    } else if (aboveMa50 && aboveMa200) {
+      score = 1; direction = "bullish";
+      description = `Price above MA50 and MA200, no golden cross yet`;
+    } else if (!aboveMa50 && aboveMa200) {
+      score = -1; direction = "bearish";
+      description = `Below MA50 (${stock.ma50.toFixed(2)}) but above MA200 — short-term pullback`;
+    } else if (!goldenCross) {
+      score = -2; direction = "bearish";
+      description = `Below MA50 and MA200, death cross active`;
+    } else {
+      score = -1; direction = "bearish";
+      description = `Below MA50 (${stock.ma50.toFixed(2)})`;
+    }
+    factors.push({ name: "MA Trend", score, maxScore: 2, description, direction });
+  }
+
+  // ADX Strength (±2)
+  if (stock.adx14 != null && stock.adx_plus_di != null && stock.adx_minus_di != null) {
+    const adx = stock.adx14; const pdi = stock.adx_plus_di; const mdi = stock.adx_minus_di;
+    let score: number; let description: string; let direction: SignalFactor["direction"];
+    if (adx > 30 && pdi > mdi)      { score = 2;  direction = "bullish"; description = `ADX ${adx.toFixed(1)} strong, +DI ${pdi.toFixed(1)} leads — strong bullish trend`; }
+    else if (adx > 20 && pdi > mdi) { score = 1;  direction = "bullish"; description = `ADX ${adx.toFixed(1)} moderate, +DI ${pdi.toFixed(1)} leads — bullish trend`; }
+    else if (adx > 30 && mdi > pdi) { score = -2; direction = "bearish"; description = `ADX ${adx.toFixed(1)} strong, -DI ${mdi.toFixed(1)} leads — strong bearish trend`; }
+    else if (adx > 20 && mdi > pdi) { score = -1; direction = "bearish"; description = `ADX ${adx.toFixed(1)} moderate, -DI ${mdi.toFixed(1)} leads — bearish trend`; }
+    else                             { score = 0;  direction = "neutral"; description = `ADX ${adx.toFixed(1)} — ranging market, trend signals unreliable`; }
+    factors.push({ name: "ADX Strength", score, maxScore: 2, description, direction });
+  }
+
+  // EMA Cross (±2) — same logic as scoreStock
+  if (stock.ema9 != null && stock.ema21 != null && stock.ema21 !== 0) {
+    const pctDiff = ((stock.ema9 - stock.ema21) / stock.ema21) * 100;
+    let score: number; let description: string; let direction: SignalFactor["direction"];
+    if      (pctDiff > 1)    { score = 2;  direction = "bullish"; description = `EMA9 above EMA21 by ${pctDiff.toFixed(1)}% — short-term momentum bullish`; }
+    else if (pctDiff > 0)    { score = 1;  direction = "bullish"; description = `EMA9 slightly above EMA21 — mild bullish bias`; }
+    else if (pctDiff >= -0.5){ score = 0;  direction = "neutral"; description = `EMA9 and EMA21 nearly equal — no clear short-term direction`; }
+    else if (pctDiff >= -1)  { score = -1; direction = "bearish"; description = `EMA9 slightly below EMA21 — mild bearish bias`; }
+    else                     { score = -2; direction = "bearish"; description = `EMA9 below EMA21 by ${Math.abs(pctDiff).toFixed(1)}% — short-term momentum bearish`; }
+    factors.push({ name: "EMA Cross", score, maxScore: 2, description, direction });
+  }
+
+  const totalScore = factors.reduce((s, f) => s + f.score, 0);
+  return { rating: ratingFromFocusedScore(totalScore), totalScore, factors, dataCompleteness: factors.length / TOTAL };
+}
+
+export function scoreMomentum(stock: Stock): FocusedScore {
+  const factors: SignalFactor[] = [];
+  const TOTAL = 3;
+
+  // RSI (±2) — same logic as scoreStock
+  if (stock.rsi14 != null) {
+    const rsi = stock.rsi14;
+    let score: number; let description: string; let direction: SignalFactor["direction"];
+    if      (rsi < 30) { score = 2;  direction = "bullish"; description = `RSI ${rsi.toFixed(1)} — oversold, high-probability bounce zone`; }
+    else if (rsi < 45) { score = 1;  direction = "bullish"; description = `RSI ${rsi.toFixed(1)} — below midpoint, selling pressure easing`; }
+    else if (rsi < 60) { score = 0;  direction = "neutral"; description = `RSI ${rsi.toFixed(1)} — neutral range`; }
+    else if (rsi < 75) { score = -1; direction = "bearish"; description = `RSI ${rsi.toFixed(1)} — elevated, approaching overbought`; }
+    else               { score = -2; direction = "bearish"; description = `RSI ${rsi.toFixed(1)} — overbought, pullback risk elevated`; }
+    factors.push({ name: "RSI 14", score, maxScore: 2, description, direction });
+  }
+
+  // MACD (±2) — same logic as scoreStock
+  if (stock.macd_line != null && stock.macd_hist != null) {
+    const line = stock.macd_line; const hist = stock.macd_hist;
+    let score: number; let description: string; let direction: SignalFactor["direction"];
+    if      (hist > 0 && line > 0)  { score = 2;  direction = "bullish"; description = `Histogram +${hist.toFixed(3)}, line +${line.toFixed(3)} — momentum building`; }
+    else if (hist > 0 && line <= 0) { score = 1;  direction = "bullish"; description = `Histogram turning up (${hist.toFixed(3)}) — early recovery`; }
+    else if (hist <= 0 && line > 0) { score = -1; direction = "bearish"; description = `Histogram falling (${hist.toFixed(3)}) — momentum fading`; }
+    else                            { score = -2; direction = "bearish"; description = `Histogram ${hist.toFixed(3)}, line ${line.toFixed(3)} — bearish momentum`; }
+    factors.push({ name: "MACD", score, maxScore: 2, description, direction });
+  }
+
+  // Stochastic (±2) — same logic as scoreStock
+  if (stock.stoch_k != null && stock.stoch_d != null) {
+    const k = stock.stoch_k; const d = stock.stoch_d;
+    let score: number; let description: string; let direction: SignalFactor["direction"];
+    if      (k < 20 && k > d) { score = 2;  direction = "bullish"; description = `%K ${k.toFixed(1)} oversold, crossing above %D — bullish reversal`; }
+    else if (k < 20)          { score = 1;  direction = "bullish"; description = `%K ${k.toFixed(1)} oversold, watching for cross above %D (${d.toFixed(1)})`; }
+    else if (k <= 80)         { score = 0;  direction = "neutral"; description = `%K ${k.toFixed(1)} neutral range`; }
+    else if (k > 80 && k < d) { score = -2; direction = "bearish"; description = `%K ${k.toFixed(1)} overbought, crossing below %D — bearish reversal`; }
+    else                      { score = -1; direction = "bearish"; description = `%K ${k.toFixed(1)} overbought zone`; }
+    factors.push({ name: "Stochastic", score, maxScore: 2, description, direction });
+  }
+
+  const totalScore = factors.reduce((s, f) => s + f.score, 0);
+  return { rating: ratingFromFocusedScore(totalScore), totalScore, factors, dataCompleteness: factors.length / TOTAL };
+}
+
+export function scoreVolume(stock: Stock): FocusedScore {
+  const factors: SignalFactor[] = [];
+  const TOTAL = 3;
+
+  // OBV Slope (±2)
+  if (stock.obv_slope != null) {
+    const slope = stock.obv_slope;
+    let score: number; let description: string; let direction: SignalFactor["direction"];
+    if      (slope > 50)  { score = 2;  direction = "bullish"; description = `OBV slope +${slope.toFixed(0)}% — strong accumulation`; }
+    else if (slope > 10)  { score = 1;  direction = "bullish"; description = `OBV slope +${slope.toFixed(0)}% — mild accumulation`; }
+    else if (slope >= -10){ score = 0;  direction = "neutral"; description = `OBV slope ${slope.toFixed(0)}% — flat, no clear volume trend`; }
+    else if (slope > -50) { score = -1; direction = "bearish"; description = `OBV slope ${slope.toFixed(0)}% — mild distribution`; }
+    else                  { score = -2; direction = "bearish"; description = `OBV slope ${slope.toFixed(0)}% — strong distribution pressure`; }
+    factors.push({ name: "OBV Slope", score, maxScore: 2, description, direction });
+  }
+
+  // Volume Ratio (±2)
+  if (stock.volume != null && stock.avg_volume_10d != null && stock.avg_volume_10d > 0) {
+    const ratio = stock.volume / stock.avg_volume_10d;
+    let score: number; let description: string; let direction: SignalFactor["direction"];
+    if      (ratio > 2.0) { score = 2;  direction = "bullish"; description = `Volume ${ratio.toFixed(1)}× 10D avg — very high, strong commitment`; }
+    else if (ratio > 1.3) { score = 1;  direction = "bullish"; description = `Volume ${ratio.toFixed(1)}× 10D avg — above average participation`; }
+    else if (ratio >= 0.7){ score = 0;  direction = "neutral"; description = `Volume ${ratio.toFixed(1)}× 10D avg — normal`; }
+    else if (ratio >= 0.5){ score = -1; direction = "bearish"; description = `Volume ${ratio.toFixed(1)}× 10D avg — below average, low conviction`; }
+    else                  { score = -2; direction = "bearish"; description = `Volume ${ratio.toFixed(1)}× 10D avg — very low, no participation`; }
+    factors.push({ name: "Volume Ratio", score, maxScore: 2, description, direction });
+  }
+
+  // Price × Volume alignment (±2)
+  if (stock.volume != null && stock.avg_volume_10d != null && stock.avg_volume_10d > 0 && stock.ma50 != null) {
+    const ratio    = stock.volume / stock.avg_volume_10d;
+    const aboveMa50 = stock.current_price > stock.ma50;
+    let score: number; let description: string; let direction: SignalFactor["direction"];
+    if      (ratio > 1.3 && aboveMa50)  { score = 2;  direction = "bullish"; description = `High volume with price above MA50 — uptrend confirmed`; }
+    else if (ratio > 1.0 && aboveMa50)  { score = 1;  direction = "bullish"; description = `Average volume with price above MA50 — mild bullish alignment`; }
+    else if (ratio > 1.3 && !aboveMa50) { score = -2; direction = "bearish"; description = `High volume with price below MA50 — breakdown confirmed`; }
+    else if (ratio > 1.0 && !aboveMa50) { score = -1; direction = "bearish"; description = `Volume on downside with price below MA50`; }
+    else                                { score = 0;  direction = "neutral"; description = `Low volume — insufficient conviction to read direction`; }
+    factors.push({ name: "Vol Alignment", score, maxScore: 2, description, direction });
+  }
+
+  const totalScore = factors.reduce((s, f) => s + f.score, 0);
+  return { rating: ratingFromFocusedScore(totalScore), totalScore, factors, dataCompleteness: factors.length / TOTAL };
+}

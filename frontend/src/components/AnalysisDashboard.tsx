@@ -1,12 +1,25 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, Fragment } from "react";
+import { useState, useEffect, useCallback, useRef, Fragment, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "motion/react";
 import { fetchStocks, analyzeStocks, Stock } from "@/lib/api";
-import { scoreStock, SwingSignal, Rating, SignalFactor } from "@/lib/swingScore";
+import {
+  scoreStock, scoreTrend, scoreMomentum, scoreVolume,
+  SwingSignal, FocusedScore, Rating, SignalFactor,
+} from "@/lib/swingScore";
 import StockLinks from "./StockLinks";
 
-type ScoredStock = { stock: Stock; signal: SwingSignal };
+type AnySignal = SwingSignal | FocusedScore;
+type ScoredStock = { stock: Stock; signal: AnySignal };
+type AnalysisMode = "swing" | "trend" | "momentum" | "volume";
+
+const MODES: { id: AnalysisMode; label: string; subtitle: string }[] = [
+  { id: "swing",    label: "Swing",    subtitle: "Swing Signal"       },
+  { id: "trend",    label: "Trend",    subtitle: "Trend Analysis"     },
+  { id: "momentum", label: "Momentum", subtitle: "Momentum Analysis"  },
+  { id: "volume",   label: "Volume",   subtitle: "Volume Analysis"    },
+];
 
 const RATINGS: Rating[] = ["Strong Buy", "Buy", "Neutral", "Sell", "Strong Sell"];
 
@@ -18,12 +31,15 @@ const RATING_STYLE: Record<Rating, { badge: string; header: string; border: stri
   "Strong Sell": { badge: "border-red/30 text-red bg-red/5",          header: "text-red",      border: "border-red/20"    },
 };
 
-function groupByRating(stocks: Stock[]): Record<Rating, ScoredStock[]> {
+function groupByScorer(
+  stocks: Stock[],
+  scorer: (s: Stock) => AnySignal,
+): Record<Rating, ScoredStock[]> {
   const map: Record<Rating, ScoredStock[]> = {
     "Strong Buy": [], "Buy": [], "Neutral": [], "Sell": [], "Strong Sell": [],
   };
   for (const stock of stocks) {
-    const signal = scoreStock(stock);
+    const signal = scorer(stock);
     map[signal.rating].push({ stock, signal });
   }
   for (const list of Object.values(map)) {
@@ -81,7 +97,7 @@ function ScoreDisplay({ score, completeness }: { score: number; completeness: nu
   );
 }
 
-function FactorDetailPanel({ signal }: { signal: SwingSignal }) {
+function FactorDetailPanel({ signal }: { signal: AnySignal }) {
   return (
     <div className="bg-surface border-b border-border/60 px-8 py-5">
       <div className="grid grid-cols-3 gap-3">
@@ -283,6 +299,20 @@ function RatingSections({
 // ── main component ────────────────────────────────────────────────────
 
 export default function AnalysisDashboard() {
+  const searchParams = useSearchParams();
+  const rawMode = searchParams.get("mode");
+  const mode: AnalysisMode =
+    rawMode === "trend" || rawMode === "momentum" || rawMode === "volume" ? rawMode : "swing";
+
+  const setMode = (m: AnalysisMode) => {
+    const p = new URLSearchParams(searchParams.toString());
+    p.set("mode", m);
+    window.history.replaceState(null, "", `?${p.toString()}`);
+    // force re-render by updating a dummy state
+    setModeTick((v) => v + 1);
+  };
+  const [, setModeTick] = useState(0);
+
   const [stocks, setStocks]         = useState<Stock[]>([]);
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState<string | null>(null);
@@ -346,10 +376,13 @@ export default function AnalysisDashboard() {
       return next;
     });
 
+  const scorer = mode === "trend" ? scoreTrend : mode === "momentum" ? scoreMomentum : mode === "volume" ? scoreVolume : scoreStock;
+
   const activeStocks = quickMode ? quickStocks : stocks;
-  const byRating = groupByRating(activeStocks);
+  const byRating = useMemo(() => groupByScorer(activeStocks, scorer), [activeStocks, scorer]);
   const isLoading = quickMode ? quickLoading : loading;
   const activeError = quickMode ? quickError : error;
+  const activeMode = MODES.find((m) => m.id === mode)!;
 
   return (
     <div className="min-h-screen bg-bg">
@@ -357,7 +390,7 @@ export default function AnalysisDashboard() {
         {/* Header */}
         <header className="mb-10 border-b border-border pb-8">
           <p className="text-xs tracking-[0.35em] text-muted uppercase mb-3 font-mono">
-            {quickMode ? "Swing Signal · Quick Check" : "Swing Signal"}
+            {quickMode ? `${activeMode.subtitle} · Quick Check` : activeMode.subtitle}
           </p>
           <div className="flex items-end justify-between gap-6">
             <div className="flex items-end gap-5">
@@ -402,6 +435,23 @@ export default function AnalysisDashboard() {
                 {quickLoading ? "…" : "ANALYZE"}
               </button>
             </div>
+          </div>
+
+          {/* Mode tabs */}
+          <div className="flex items-center gap-2 mt-6">
+            {MODES.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => setMode(m.id)}
+                className={`px-4 py-1.5 border text-[10px] font-mono tracking-[0.2em] uppercase transition-colors ${
+                  mode === m.id
+                    ? "border-accent text-accent"
+                    : "border-border text-muted hover:text-[#c8c4bc] hover:border-muted"
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
           </div>
         </header>
 

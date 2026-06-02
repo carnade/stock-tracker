@@ -27,6 +27,14 @@ export default function NavBar() {
         >
           Analysis
         </Link>
+        <Link
+          href="/signals"
+          className={`text-[11px] tracking-[0.25em] font-mono uppercase transition-colors ${
+            path === "/signals" ? "text-accent" : "text-muted hover:text-[#c8c4bc]"
+          }`}
+        >
+          Signals
+        </Link>
       </div>
     </nav>
   );
