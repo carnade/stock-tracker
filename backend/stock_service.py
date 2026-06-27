@@ -198,6 +198,42 @@ def _price_on_or_before(hist: pd.DataFrame, target: date) -> float | None:
         return None
 
 
+def _fetch_intraday_prices(tickers: list[str]) -> dict[str, tuple[float, float | None]]:
+    """Batch-fetch 5-day 1-minute bars to get accurate last-traded price and previous session close."""
+    if not tickers:
+        return {}
+    try:
+        raw = yf.download(
+            tickers,
+            period="5d",
+            interval="1m",
+            group_by="ticker",
+            auto_adjust=True,
+            progress=False,
+            threads=True,
+        )
+    except Exception as e:
+        logger.warning(f"Intraday download failed: {e}")
+        return {}
+
+    result = {}
+    for ticker in tickers:
+        try:
+            hist = raw[ticker].dropna(subset=["Close"]) if len(tickers) > 1 else raw.dropna(subset=["Close"])
+            if hist.empty:
+                continue
+            # Last Close per calendar date, sorted ascending
+            by_date = hist.groupby(hist.index.map(lambda x: x.date()))["Close"].last().sort_index()
+            if len(by_date) == 0:
+                continue
+            current   = float(by_date.iloc[-1])
+            prev_close = float(by_date.iloc[-2]) if len(by_date) >= 2 else None
+            result[ticker] = (current, prev_close)
+        except Exception as e:
+            logger.warning(f"Intraday parse error for {ticker}: {e}")
+    return result
+
+
 def _detect_ma_cross_days(closes: pd.Series, fast: int = 50, slow: int = 200, lookback: int = 10) -> tuple[int | None, int | None]:
     """Returns (golden_cross_days, death_cross_days) — days since each cross within lookback, else None."""
     if len(closes) < slow + lookback + 1:
@@ -264,6 +300,9 @@ def get_all_price_histories(tickers: list[str]) -> dict[str, PriceData]:
         logger.error(f"Batch download failed: {e}")
         return {**cached, **{t: empty for t in stale}}
 
+    # Second pass: accurate current price + prev close from intraday bars
+    intraday_prices = _fetch_intraday_prices(stale)
+
     fetched: dict[str, PriceData] = {}
     for ticker in stale:
         try:
@@ -271,7 +310,8 @@ def get_all_price_histories(tickers: list[str]) -> dict[str, PriceData]:
             if hist.empty:
                 fetched[ticker] = empty
                 continue
-            current = float(hist["Close"].iloc[-1])
+            intraday = intraday_prices.get(ticker)
+            current = intraday[0] if intraday else float(hist["Close"].iloc[-1])
 
             try:
                 rsi14 = _compute_rsi(hist["Close"])
@@ -312,7 +352,7 @@ def get_all_price_histories(tickers: list[str]) -> dict[str, PriceData]:
             ma50 = round(float(hist["Close"].tail(50).mean()), 2) if len(hist) >= 50 else None
             ma200 = round(float(hist["Close"].tail(200).mean()), 2) if len(hist) >= 200 else None
 
-            prev_close = float(hist["Close"].iloc[-2]) if len(hist) >= 2 else None
+            prev_close = intraday[1] if intraday else (float(hist["Close"].iloc[-2]) if len(hist) >= 2 else None)
 
             try:
                 stoch_k, stoch_d = _compute_stochastic(hist)
