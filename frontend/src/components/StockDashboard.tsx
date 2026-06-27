@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { fetchStocks, fetchGroups, createGroup, Stock, Group } from "@/lib/api";
 import GroupSection from "./GroupSection";
 import AddStockModal from "./AddStockModal";
+import IndexBar from "./IndexBar";
 
 export default function StockDashboard() {
   const [stocks, setStocks] = useState<Stock[]>([]);
@@ -118,6 +119,8 @@ export default function StockDashboard() {
             </button>
           </div>
         </header>
+
+        <IndexBar />
 
         {/* Loading / error */}
         {loading && (

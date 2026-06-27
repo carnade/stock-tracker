@@ -35,6 +35,14 @@ export default function NavBar() {
         >
           Signals
         </Link>
+        <Link
+          href="/signals/static"
+          className={`text-[11px] tracking-[0.25em] font-mono uppercase transition-colors ${
+            path === "/signals/static" ? "text-accent" : "text-muted hover:text-[#c8c4bc]"
+          }`}
+        >
+          Static
+        </Link>
       </div>
     </nav>
   );

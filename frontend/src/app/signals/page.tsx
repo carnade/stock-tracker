@@ -1,5 +1,5 @@
-import SignalsDashboard from "@/components/SignalsDashboard";
+import CrossoverDashboard from "@/components/CrossoverDashboard";
 
 export default function SignalsPage() {
-  return <SignalsDashboard />;
+  return <CrossoverDashboard />;
 }

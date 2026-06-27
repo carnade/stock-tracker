@@ -126,6 +126,10 @@ def list_stocks(session: Session = Depends(get_session)):
                 "obv_slope": p.obv_slope if p else None,
                 "ema9": p.ema9 if p else None,
                 "ema21": p.ema21 if p else None,
+                "prev_macd_hist": p.prev_macd_hist if p else None,
+                "prev_rsi14": p.prev_rsi14 if p else None,
+                "golden_cross_days": p.golden_cross_days if p else None,
+                "death_cross_days": p.death_cross_days if p else None,
                 **links,
             }
         )
@@ -153,6 +157,38 @@ async def preview_stock(ticker: str):
         "avanza_id": avanza.id if avanza else None,
         **links,
     }
+
+
+_INDEX_TICKERS = {
+    "^GSPC": "S&P 500",
+    "^DJI": "Dow Jones",
+    "^IXIC": "NASDAQ",
+    "^OMX": "OMX 30",
+}
+
+
+@app.get("/indices")
+def list_indices():
+    prices = get_all_price_histories(list(_INDEX_TICKERS.keys()))
+    result = []
+    for ticker, name in _INDEX_TICKERS.items():
+        p = prices.get(ticker)
+        current = p.current if p else 0.0
+        result.append({
+            "ticker": ticker,
+            "name": name,
+            "price": current,
+            "day_change_pct": pct_change(current, p.prev_close) if p else None,
+            "week_change_pct": pct_change(current, p.week_ago) if p else None,
+            "month_change_pct": pct_change(current, p.month_ago) if p else None,
+            "ytd_change_pct": pct_change(current, p.ytd_start) if p else None,
+            "week52_high": round(p.week52_high, 2) if p and p.week52_high else None,
+            "week52_low": round(p.week52_low, 2) if p and p.week52_low else None,
+            "rsi14": round(p.rsi14, 1) if p and p.rsi14 is not None else None,
+            "ma50": round(p.ma50, 2) if p and p.ma50 else None,
+            "ma200": round(p.ma200, 2) if p and p.ma200 else None,
+        })
+    return result
 
 
 @app.get("/stocks/analyze")
@@ -209,6 +245,10 @@ def analyze_tickers(tickers: str):
             "obv_slope": p.obv_slope,
             "ema9": p.ema9,
             "ema21": p.ema21,
+            "prev_macd_hist": p.prev_macd_hist,
+            "prev_rsi14": p.prev_rsi14,
+            "golden_cross_days": p.golden_cross_days,
+            "death_cross_days": p.death_cross_days,
             **links,
         })
     return result

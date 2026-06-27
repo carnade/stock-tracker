@@ -45,6 +45,10 @@ export interface Stock {
   obv_slope: number | null;
   ema9: number | null;
   ema21: number | null;
+  prev_macd_hist: number | null;
+  prev_rsi14: number | null;
+  golden_cross_days: number | null;
+  death_cross_days: number | null;
   yahoo_url: string;
   tradingview_url: string;
   avanza_url: string | null;
@@ -75,6 +79,23 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   if (res.status === 204) return undefined as T;
   return res.json();
 }
+
+export interface IndexQuote {
+  ticker: string;
+  name: string;
+  price: number;
+  day_change_pct: number | null;
+  week_change_pct: number | null;
+  month_change_pct: number | null;
+  ytd_change_pct: number | null;
+  week52_high: number | null;
+  week52_low: number | null;
+  rsi14: number | null;
+  ma50: number | null;
+  ma200: number | null;
+}
+
+export const fetchIndices = () => request<IndexQuote[]>("/indices");
 
 export const fetchStocks = () => request<Stock[]>("/stocks");
 

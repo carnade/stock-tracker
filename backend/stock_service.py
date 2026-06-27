@@ -59,6 +59,10 @@ class PriceData:
     obv_slope: float | None
     ema9: float | None
     ema21: float | None
+    prev_macd_hist: float | None
+    prev_rsi14: float | None
+    golden_cross_days: int | None
+    death_cross_days: int | None
 
 
 def lookup_ticker(ticker: str) -> StockPreview:
@@ -194,6 +198,29 @@ def _price_on_or_before(hist: pd.DataFrame, target: date) -> float | None:
         return None
 
 
+def _detect_ma_cross_days(closes: pd.Series, fast: int = 50, slow: int = 200, lookback: int = 10) -> tuple[int | None, int | None]:
+    """Returns (golden_cross_days, death_cross_days) — days since each cross within lookback, else None."""
+    if len(closes) < slow + lookback + 1:
+        return None, None
+    ma_fast = closes.rolling(fast).mean()
+    ma_slow = closes.rolling(slow).mean()
+    diff = (ma_fast - ma_slow).dropna()
+    recent = diff.tail(lookback + 1)
+    if len(recent) < 2:
+        return None, None
+    golden_days: int | None = None
+    death_days:  int | None = None
+    n = len(recent)
+    for i in range(1, n):
+        prev_d, curr_d = recent.iloc[i - 1], recent.iloc[i]
+        days_ago = n - 1 - i
+        if prev_d < 0 and curr_d >= 0 and golden_days is None:
+            golden_days = days_ago
+        elif prev_d > 0 and curr_d <= 0 and death_days is None:
+            death_days = days_ago
+    return golden_days, death_days
+
+
 def get_all_price_histories(tickers: list[str]) -> dict[str, PriceData]:
     """Batch-fetch 1-year price history, with a 5-minute in-memory cache."""
     if not tickers:
@@ -206,7 +233,9 @@ def get_all_price_histories(tickers: list[str]) -> dict[str, PriceData]:
                       macd_line=None, macd_signal=None, macd_hist=None, ma50=None, ma200=None,
                       bb_upper=None, bb_lower=None, bb_pct=None, atr14=None,
                       stoch_k=None, stoch_d=None, adx14=None, adx_plus_di=None, adx_minus_di=None,
-                      obv_slope=None, ema9=None, ema21=None)
+                      obv_slope=None, ema9=None, ema21=None,
+                      prev_macd_hist=None, prev_rsi14=None,
+                      golden_cross_days=None, death_cross_days=None)
 
     # Serve from cache where possible
     cached: dict[str, PriceData] = {}
@@ -310,6 +339,18 @@ def get_all_price_histories(tickers: list[str]) -> dict[str, PriceData]:
                 logger.warning(f"EMA error for {ticker}: {e}")
                 ema9 = ema21 = None
 
+            try:
+                prev_macd_hist = _compute_macd(hist["Close"].iloc[:-1])[2] if len(hist) > 1 else None
+                prev_rsi14_val = _compute_rsi(hist["Close"].iloc[:-1]) if len(hist) > 1 else None
+                prev_rsi14 = round(prev_rsi14_val, 1) if prev_rsi14_val is not None else None
+            except Exception:
+                prev_macd_hist = prev_rsi14 = None
+
+            try:
+                golden_cross_days, death_cross_days = _detect_ma_cross_days(hist["Close"])
+            except Exception:
+                golden_cross_days = death_cross_days = None
+
             data = PriceData(
                 current=current,
                 prev_close=prev_close,
@@ -338,6 +379,10 @@ def get_all_price_histories(tickers: list[str]) -> dict[str, PriceData]:
                 obv_slope=obv_slope,
                 ema9=ema9,
                 ema21=ema21,
+                prev_macd_hist=prev_macd_hist,
+                prev_rsi14=prev_rsi14,
+                golden_cross_days=golden_cross_days,
+                death_cross_days=death_cross_days,
             )
             fetched[ticker] = data
             _price_cache[ticker] = (now, data)
